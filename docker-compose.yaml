@@ -10,6 +10,7 @@ services:
     ports:
       - 80:80                                                     # Open port 80 (HTTP)
       - 443:443
+      - 8080:8080
     command:
       - "--accesslog=true"                                        # Log access for debugging
       - "--entrypoints.web.address=:80"                           # Use port 80 as entypoint 'web'
@@ -18,6 +19,13 @@ services:
       - "--providers.docker.endpoint=unix:///var/run/docker.sock" # Path to docker socket to listen to new services
       - "--providers.docker.exposedbydefault=false"               # Do not expose every service by default
       - "--serversTransport.insecureSkipVerify=true"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+    # labels:
+    #   - "traefik.http.routers.dashboard.rule=Host(`proxy.localhost`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+    #   - "traefik.http.routers.dashboard.service=api@internal"
+    #   - "traefik.http.routers.dashboard.middlewares=auth"
+    #   - "traefik.http.middlewares.auth.basicauth.users=test:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/,test2:$$apr1$$d9hr9HBB$$4HxwgUir3HP4EsggP/QNo0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro              # Mount host's docker socket read-only
 
@@ -81,11 +89,12 @@ services:
         traefik.http.routers.ict.rule=(Host(`${OP_HOST}`) &&
         PathPrefix(`/realms/ict/protocol/openid-connect/userinfo/ict`))
       - traefik.http.routers.ict.priority=2                       # Set priority high (traefik.http.routers.op.priority must be lower)
-      - traefik.http.routers.ict.middlewares=ict@docker           # Include 'ict' middleware from Docker labels below 
+      - traefik.http.routers.ict.middlewares=ict@docker,ictpath@docker           # Include 'ict' middleware from Docker labels below 
+      - traefik.http.middlewares.ict.headers.accesscontrolalloworiginlist=*
       - >-                                                        # Remove .../userinfo/ict path from request
-        traefik.http.middlewares.ict.replacepathregex.regex=^/realms/ict/protocol/openid-connect/userinfo/ict(.*)
+        traefik.http.middlewares.ictpath.replacepathregex.regex=^/realms/ict/protocol/openid-connect/userinfo/ict(.*)
       - >-                                                        # Forward only path after .../userinfo/ict (marked with '(.*)') in request to ICT endpoint
-        traefik.http.middlewares.ict.replacepathregex.replacement=$$1
+        traefik.http.middlewares.ictpath.replacepathregex.replacement=$$1
     environment:
       KEY_FILE: /run/secrets/op_private_key                       # Set private key file to Docker Secret 'op_private_key'
       ALG: RS256                                                  # Configure RSA with SHA256 (RS256) as signature algorithm for ID Assertion Tokens
@@ -151,7 +160,7 @@ services:
       - traefik.port=9000
       - traefik.http.routers.op2.entrypoints=web,websecure         # Enable exposure via HTTP entrypoint 'web' and 'websecure'
       - traefik.http.routers.op2.rule=Host(`${OP2_HOST}`)          # Specify routing via hostname provided in environment variable 'OP_HOST'
-      - traefik.http.routers.op2.priority=1                        # Set priority low (traefik.http.routers.ict.priority must be higher)
+      - traefik.http.routers.op2.priority=1000                        # Set priority low (traefik.http.routers.ict.priority must be higher)
       - traefik.http.routers.op2.middlewares=op2
       - traefik.http.middlewares.op2.headers.customResponseHeaders.Access-Control-Allow-Origin=http://localhost:4200
     secrets:
@@ -203,20 +212,22 @@ services:
     labels:
       - traefik.enable=true                                       # Enable Traefik reverse proxy exposure
       - traefik.http.routers.ict2.entrypoints=web,websecure       # Enable exposure via HTTP entrypoint 'web'
-      - >-                                                        # Specify routing via hostname provided in environment variable 'OP_HOST' and append it to userinfo endpoint
-        traefik.http.routers.ict2.rule=(Host(`${OP2_HOST}`) &&
-        PathPrefix(`/application/o/userinfo/ict`))
-      - traefik.http.routers.ict2.priority=2                      # Set priority high (traefik.http.routers.op.priority must be lower)
-      - traefik.http.routers.ict2.middlewares=ict2@docker         # Include 'ict' middleware from Docker labels below 
-      - >-                                                        # Remove .../userinfo/ict path from request
-        traefik.http.middlewares.ict2.replacepathregex.regex=^/application/o/userinfo/ict(.*)
-      - >-                                                        # Forward only path after .../userinfo/ict (marked with '(.*)') in request to ICT endpoint
-        traefik.http.middlewares.ict2.replacepathregex.replacement=$$1
+      # - >-                                                        # Specify routing via hostname provided in environment variable 'OP_HOST' and append it to userinfo endpoint
+      - "traefik.http.routers.ict2.rule=(Host(`${OP2_HOST}`) && PathPrefix(`/application/o/userinfo/ict`))"
+      - traefik.http.routers.ict2.priority=2000                      # Set priority high (traefik.http.routers.op.priority must be lower)
+      - traefik.http.routers.ict2.middlewares=ict2@docker,ict2path@docker         # Include 'ict' middleware from Docker labels below 
+      - traefik.http.middlewares.ict2.headers.customResponseHeaders.Access-Control-Allow-Origin=http://localhost:4200
+      # - "traefik.http.middlewares.ict2.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      # - "traefik.http.middlewares.ict2.headers.accesscontrolalloworiginlist=*"
+      # - >-                                                        # Remove .../userinfo/ict path from request
+      -  "traefik.http.middlewares.ict2path.replacepathregex.regex=^/application/o/userinfo/ict(.*)"
+      # - >-                                                        # Forward only path after .../userinfo/ict (marked with '(.*)') in request to ICT endpoint
+      - "traefik.http.middlewares.ict2path.replacepathregex.replacement=$$1"
     environment:
       KEY_FILE: /run/secrets/op2_private_key                      # Set private key file to Docker Secret 'op_private_key'
       ALG: RS256                                                  # Configure RSA with SHA256 (RS256) as signature algorithm for ID Assertion Tokens
       USERINFO: http://op2:9000/application/o/userinfo            # Configure userinfo endpoint ('op' is the Docker-internal hostname of OpenID Provider service)
-      ISSUER: http://${OP2_HOST}/                                 # Configure issuer of issued ID Assertion Tokens
+      ISSUER: http://${OP2_HOST}/application/o/ict-benchmark/      # Configure issuer of issued ID Assertion Tokens
       DEFAULT_TOKEN_PERIOD: 3600                                  # Configure the default lifetime of issued ID Assertion Tokens in seconds (3600s = 1h)
       MAX_TOKEN_PERIOD: 2592000                                   # Configure the maximum lifetime of issued ID Assertion Tokens in seconds (2592000s = 30d)
       PORT: 8080                                                  # Configure the internal port on which the ICT endpoint is listening
