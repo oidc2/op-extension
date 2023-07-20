@@ -5,7 +5,7 @@ version: "3.9"
 services:
   # Reverse Proxy (Traefik):
   proxy:
-    image: traefik:v2.9                                           # Use Traefik reverse proxy
+    image: traefik:v2.10                                          # Use Traefik reverse proxy
     restart: unless-stopped                                       # Restore last on/off state after restart
     ports:
       - 80:80                                                     # Open port 80 (HTTP)
@@ -36,7 +36,7 @@ services:
       - userdb:/var/lib/postgresql/data                           # Mount PostgreSQL data to shared Docker Volume 'userdb'
   # OpenID Provider (Keycloak):
   op:
-    image: quay.io/keycloak/keycloak:21.0                         # Use Keycloak as OpenID Provider
+    image: quay.io/keycloak/keycloak:22.0                         # Use Keycloak as OpenID Provider
     restart: unless-stopped                                       # Restore last on/off state after restart
     depends_on:
       - proxy                                                     # Keycloak requires running reverse proxy
@@ -132,7 +132,7 @@ services:
     volumes:
       - redis2:/data
   op2:
-    image: ghcr.io/goauthentik/server:2023.2.3
+    image: ghcr.io/goauthentik/server:2023.6.1
     restart: unless-stopped
     command: server
     environment:
@@ -165,7 +165,7 @@ services:
       - 9000:9000
       - 9443:9443
   op2_worker:
-    image: ghcr.io/goauthentik/server:2023.2.3
+    image: ghcr.io/goauthentik/server:2023.6.1
     restart: unless-stopped
     command: worker
     environment:
